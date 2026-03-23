@@ -8,11 +8,13 @@ import {
  Alert,
  Button,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 const API_BASE = "http://172.16.206.42:4000";
 export default function FileScreen({ token, onLogout, navigation }) {
  const [items, setItems] = useState([]);
  const [currentPath, setCurrentPath] = useState("");
  const [loading, setLoading] = useState(false);
+ const [uploading, setUploading] = useState(false);
  const loadFiles = async (path = "") => {
    try {
      setLoading(true);
@@ -40,6 +42,45 @@ export default function FileScreen({ token, onLogout, navigation }) {
  useEffect(() => {
    loadFiles();
  }, []);
+ const uploadFile = async () => {
+   try {
+     setUploading(true);
+     const result = await DocumentPicker.getDocumentAsync({
+       copyToCacheDirectory: true,
+       multiple: false,
+     });
+     if (result.canceled) {
+       return;
+     }
+     const file = result.assets[0];
+     const formData = new FormData();
+     formData.append("path", currentPath);
+     formData.append("file", {
+       uri: file.uri,
+       name: file.name,
+       type: file.mimeType || "application/octet-stream",
+     });
+     const res = await fetch(`${API_BASE}/files/upload`, {
+       method: "POST",
+       headers: {
+         Authorization: `Bearer ${token}`,
+       },
+       body: formData,
+     });
+     const data = await res.json();
+     if (!res.ok) {
+       Alert.alert("Erreur", data.error || "Upload impossible");
+       return;
+     }
+     Alert.alert("Succès", `Fichier uploadé : ${file.name}`);
+     loadFiles(currentPath);
+   } catch (error) {
+     console.log(error);
+     Alert.alert("Erreur", "Impossible d'uploader le fichier");
+   } finally {
+     setUploading(false);
+   }
+ };
  const openItem = (item) => {
    if (item.type === "folder") {
      loadFiles(item.path);
@@ -47,7 +88,6 @@ export default function FileScreen({ token, onLogout, navigation }) {
    }
    navigation.navigate("FileDetail", {
      item,
-     currentPath,
      refreshParent: () => loadFiles(currentPath),
    });
  };
@@ -64,6 +104,23 @@ export default function FileScreen({ token, onLogout, navigation }) {
 <View style={styles.buttonRow}>
 <View style={styles.button}>
 <Button title="Déconnexion" onPress={onLogout} color="#cc3333" />
+</View>
+</View>
+<View style={styles.buttonRow}>
+<View style={styles.button}>
+<Button
+           title="⚙️ Paramètres"
+           onPress={() => navigation.navigate("Settings")}
+         />
+</View>
+</View>
+<View style={styles.buttonRow}>
+<View style={styles.button}>
+<Button
+           title={uploading ? "Upload..." : "📤 Uploader un fichier"}
+           onPress={uploadFile}
+           disabled={uploading}
+         />
 </View>
 </View>
 <View style={styles.buttonRow}>

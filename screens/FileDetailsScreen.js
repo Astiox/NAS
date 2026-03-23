@@ -1,52 +1,102 @@
 import { useState } from "react";
-import { Alert, Button, StyleSheet, Text, View } from "react-native";
+import { Alert, Button, StyleSheet, Text, View, Platform, TouchableOpacity } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
+import { StorageAccessFramework } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 const API_BASE = "http://172.16.206.42:4000";
+function getMimeType(fileName) {
+ const lower = fileName.toLowerCase();
+ if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+ if (lower.endsWith(".png")) return "image/png";
+ if (lower.endsWith(".gif")) return "image/gif";
+ if (lower.endsWith(".webp")) return "image/webp";
+ if (lower.endsWith(".pdf")) return "application/pdf";
+ if (lower.endsWith(".txt")) return "text/plain";
+ if (lower.endsWith(".mp4")) return "video/mp4";
+ if (lower.endsWith(".mp3")) return "audio/mpeg";
+ if (lower.endsWith(".json")) return "application/json";
+ return "application/octet-stream";
+}
 export default function FileDetailScreen({ route, navigation, token }) {
  const { item, refreshParent } = route.params;
- const [localUri, setLocalUri] = useState(null);
- const [downloading, setDownloading] = useState(false);
- const downloadFile = async () => {
+ const [busy, setBusy] = useState(false);
+ const downloadToAppStorage = async () => {
+   const remoteUrl = `${API_BASE}/files/download?path=${encodeURIComponent(item.path)}`;
+   const targetUri = `${FileSystem.cacheDirectory}${item.name}`;
+   const result = await FileSystem.downloadAsync(remoteUrl, targetUri, {
+     headers: {
+       Authorization: `Bearer ${token}`,
+     },
+   });
+   if (result.status !== 200) {
+     throw new Error(`Téléchargement impossible (${result.status})`);
+   }
+   return result.uri;
+ };
+ const handleDownload = async () => {
    try {
-     setDownloading(true);
-     const remoteUrl = `${API_BASE}/files/download?path=${encodeURIComponent(item.path)}`;
-     const targetUri = `${FileSystem.documentDirectory}${item.name}`;
-     const result = await FileSystem.downloadAsync(remoteUrl, targetUri, {
-       headers: {
-         Authorization: `Bearer ${token}`,
-       },
-     });
-     if (result.status !== 200) {
-       Alert.alert("Erreur", `Téléchargement impossible (${result.status})`);
+     setBusy(true);
+     const localUri = await downloadToAppStorage();
+     if (Platform.OS === "ios") {
+       const canShare = await Sharing.isAvailableAsync();
+       if (!canShare) {
+         Alert.alert("Erreur", "Le partage n'est pas disponible sur cet appareil");
+         return;
+       }
+       await Sharing.shareAsync(localUri, {
+         mimeType: getMimeType(item.name),
+         dialogTitle: "Enregistrer dans Fichiers",
+       });
        return;
      }
-     setLocalUri(result.uri);
-     const info = await FileSystem.getInfoAsync(result.uri);
-     Alert.alert(
-       "Téléchargement terminé",
-       `Fichier : ${item.name}\nPrésent localement : ${info.exists ? "oui" : "non"}\nTaille : ${info.size ?? 0} octets`
-     );
+     if (Platform.OS === "android") {
+       const permissions =
+         await StorageAccessFramework.requestDirectoryPermissionsAsync();
+       if (!permissions.granted) {
+         Alert.alert("Annulé", "Aucun dossier sélectionné");
+         return;
+       }
+       const base64Content = await FileSystem.readAsStringAsync(localUri, {
+         encoding: FileSystem.EncodingType.Base64,
+       });
+       const mimeType = getMimeType(item.name);
+       const dotIndex = item.name.lastIndexOf(".");
+       const hasExt = dotIndex > 0;
+       const fileBaseName = hasExt ? item.name.slice(0, dotIndex) : item.name;
+       const safFileUri = await StorageAccessFramework.createFileAsync(
+         permissions.directoryUri,
+         fileBaseName,
+         mimeType
+       );
+       await FileSystem.writeAsStringAsync(safFileUri, base64Content, {
+         encoding: FileSystem.EncodingType.Base64,
+       });
+       Alert.alert("OK", `Fichier enregistré : ${item.name}`);
+     }
    } catch (error) {
      Alert.alert("Erreur", "Impossible de télécharger le fichier");
    } finally {
-     setDownloading(false);
+     setBusy(false);
    }
  };
- const shareFile = async () => {
+ const handleShareAndroid = async () => {
    try {
-     if (!localUri) {
-       Alert.alert("Info", "Télécharge d'abord le fichier");
-       return;
-     }
+     if (Platform.OS !== "android") return;
+     setBusy(true);
+     const localUri = await downloadToAppStorage();
      const canShare = await Sharing.isAvailableAsync();
      if (!canShare) {
        Alert.alert("Erreur", "Le partage n'est pas disponible sur cet appareil");
        return;
      }
-     await Sharing.shareAsync(localUri);
+     await Sharing.shareAsync(localUri, {
+       mimeType: getMimeType(item.name),
+       dialogTitle: "Partager le fichier",
+     });
    } catch (error) {
      Alert.alert("Erreur", "Impossible de partager le fichier");
+   } finally {
+     setBusy(false);
    }
  };
  const deleteFile = async () => {
@@ -91,42 +141,97 @@ export default function FileDetailScreen({ route, navigation, token }) {
    );
  };
  return (
-<View style={styles.container}>
-<Text style={styles.title}>{item.name}</Text>
-<Text style={styles.meta}>Type : {item.type}</Text>
-<Text style={styles.meta}>Chemin : {item.path}</Text>
-<Text style={styles.meta}>Taille : {item.size} octets</Text>
-<View style={styles.spacer} />
-<Button
-       title={downloading ? "Téléchargement..." : "Télécharger"}
-       onPress={downloadFile}
-       disabled={downloading}
-     />
-<View style={styles.spacer} />
-<Button title="Partager" onPress={shareFile} />
-<View style={styles.spacer} />
-<Button title="Supprimer" onPress={deleteFile} color="#cc3333" />
-</View>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{item.name}</Text>
+      </View>
+      <View style={styles.details}>
+        <Text style={styles.meta}>Type : {item.type}</Text>
+        <Text style={styles.meta}>Chemin : {item.path}</Text>
+        <Text style={styles.meta}>Taille : {item.size} octets</Text>
+      </View>
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.button, busy && styles.buttonDisabled]}
+          onPress={handleDownload}
+          disabled={busy}
+        >
+          <Text style={styles.buttonText}>
+            {busy ? "Traitement..." : "Télécharger"}
+          </Text>
+        </TouchableOpacity>
+        {Platform.OS === "android" && (
+          <TouchableOpacity
+            style={[styles.button, busy && styles.buttonDisabled]}
+            onPress={handleShareAndroid}
+            disabled={busy}
+          >
+            <Text style={styles.buttonText}>Partager</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[styles.button, styles.deleteButton]}
+          onPress={deleteFile}
+        >
+          <Text style={styles.buttonText}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
  );
 }
 const styles = StyleSheet.create({
- container: {
-   flex: 1,
-   padding: 20,
-   backgroundColor: "#fff",
-   justifyContent: "center",
- },
- title: {
-   fontSize: 26,
-   fontWeight: "bold",
-   marginBottom: 20,
- },
- meta: {
-   fontSize: 16,
-   marginBottom: 8,
-   color: "#444",
- },
- spacer: {
-   height: 16,
- },
+  container: {
+    flex: 1,
+    backgroundColor: "#f9f9f9",
+    padding: 20,
+  },
+  header: {
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: "#007AFF",
+    borderRadius: 8,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+  },
+  details: {
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  meta: {
+    fontSize: 16,
+    marginBottom: 8,
+    color: "#444",
+  },
+  actions: {
+    marginTop: 20,
+  },
+  button: {
+    backgroundColor: "#007AFF",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  buttonDisabled: {
+    backgroundColor: "#ccc",
+  },
+  deleteButton: {
+    backgroundColor: "#cc3333",
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 });

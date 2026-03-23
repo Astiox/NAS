@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 const API_BASE = "http://172.16.206.42:4000";
 export default function LoginScreen({ onLogin }) {
  const [username, setUsername] = useState("moussepi");
@@ -26,57 +26,84 @@ export default function LoginScreen({ onLogin }) {
      if (data.token) {
        onLogin(data.token);
      } else {
-       Alert.alert("Erreur", "Token manquant");
+       Alert.alert("Erreur", "Token non reçu");
      }
    } catch (error) {
-     Alert.alert("Erreur réseau", "Impossible de joindre l'API");
+     Alert.alert("Erreur", "Une erreur s'est produite");
    } finally {
      setLoading(false);
    }
  };
+
  return (
-<View style={styles.container}>
-<Text style={styles.title}>NAS Login</Text>
-<TextInput
-       style={styles.input}
-       placeholder="Nom d'utilisateur"
-       value={username}
-       onChangeText={setUsername}
-       autoCapitalize="none"
-     />
-<TextInput
-       style={styles.input}
-       placeholder="Mot de passe"
-       value={password}
-       onChangeText={setPassword}
-       secureTextEntry
-     />
-<Button
-       title={loading ? "Connexion..." : "Se connecter"}
-       onPress={handleLogin}
-       disabled={loading}
-     />
-</View>
+   <View style={styles.container}>
+     <View style={styles.logoContainer}>
+       <Text style={styles.logo}>🔒 NAS</Text>
+     </View>
+     <View style={styles.form}>
+       <TextInput
+         style={styles.input}
+         placeholder="Nom d'utilisateur"
+         value={username}
+         onChangeText={setUsername}
+         autoCapitalize="none"
+       />
+       <TextInput
+         style={styles.input}
+         placeholder="Mot de passe"
+         value={password}
+         onChangeText={setPassword}
+         secureTextEntry
+       />
+       <TouchableOpacity
+         style={[styles.button, loading && styles.buttonDisabled]}
+         onPress={handleLogin}
+         disabled={loading}
+       >
+         <Text style={styles.buttonText}>{loading ? "Connexion..." : "Se connecter"}</Text>
+       </TouchableOpacity>
+     </View>
+   </View>
  );
 }
 const styles = StyleSheet.create({
- container: {
-   flex: 1,
-   justifyContent: "center",
-   padding: 24,
-   backgroundColor: "#fff"
- },
- title: {
-   fontSize: 28,
-   fontWeight: "bold",
-   marginBottom: 24,
-   textAlign: "center"
- },
- input: {
-   borderWidth: 1,
-   borderColor: "#ccc",
-   padding: 12,
-   marginBottom: 16,
-   borderRadius: 8
- }
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f9f9f9",
+  },
+  logoContainer: {
+    marginBottom: 40,
+  },
+  logo: {
+    fontSize: 48,
+    fontWeight: "bold",
+    color: "#007AFF",
+  },
+  form: {
+    width: "85%",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    padding: 12,
+    marginBottom: 16,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+  },
+  button: {
+    backgroundColor: "#007AFF",
+    padding: 14,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  buttonDisabled: {
+    backgroundColor: "#ccc",
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 });
