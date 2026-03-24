@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import { useI18n } from "../context/I18nContext";
+import { t } from "../i18n";
 const API_BASE = "http://172.16.206.42:4000";
 export default function SetupScreen({ onDone, navigation }) {
+ const { t } = useI18n(); // Use the I18nContext
  const [username, setUsername] = useState("");
  const [password, setPassword] = useState("");
  const [loading, setLoading] = useState(false);
  const handleSetup = async () => {
    try {
      if (!username.trim() || !password.trim()) {
-       Alert.alert("Erreur", "Remplis username et password");
+       Alert.alert(t("error"), t("fill_username_password"));
        return;
      }
      setLoading(true);
@@ -24,37 +27,39 @@ export default function SetupScreen({ onDone, navigation }) {
      });
      const data = await res.json();
      if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Setup impossible");
+       Alert.alert(t("error"), data.error || t("setup_failed"));
        return;
      }
-     Alert.alert("OK", "Compte créé");
+     Alert.alert(t("success"), t("account_created"));
      onDone();
    } catch (error) {
-     Alert.alert("Erreur réseau", "Impossible de joindre l'API");
+     Alert.alert(t("network_error"), t("api_unreachable"));
    } finally {
      setLoading(false);
    }
  };
  return (
 <View style={styles.container}>
-<Button title="⬅ Retour" onPress={() => navigation.goBack()} />
-<Text style={styles.title}>Première configuration</Text>
+<Button title={`⬅ ${t("back")}`} onPress={() => navigation.goBack()} />
+<Text style={styles.title}>{t("initial_setup")}</Text>
 <TextInput
        style={styles.input}
-       placeholder="Nom d'utilisateur"
+       placeholder={t("username_placeholder")}
        value={username}
        onChangeText={setUsername}
        autoCapitalize="none"
+       autoComplete="off" // Disable auto-completion
      />
 <TextInput
        style={styles.input}
-       placeholder="Mot de passe"
+       placeholder={t("password_placeholder")}
        value={password}
        onChangeText={setPassword}
        secureTextEntry
+       autoComplete="off" // Disable auto-completion
      />
 <Button
-       title={loading ? "Création..." : "Créer le compte"}
+       title={loading ? t("creating_account") : t("create_account")}
        onPress={handleSetup}
        disabled={loading}
      />

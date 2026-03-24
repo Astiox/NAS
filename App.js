@@ -5,6 +5,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SettingsProvider } from "./context/SettingsContext";
+import { I18nProvider } from "./context/I18nContext";
 import LoginScreen from "./screens/LoginScreen";
 import SetupScreen from "./screens/SetupScreen";
 import FileScreen from "./screens/FileScreen";
@@ -50,10 +51,14 @@ function MainTabs({ token, onLogout, onTokenUpdate }) {
   );
 }
 
-export default function App() {
+export default function App({ navigation }) {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSetup, setIsSetup] = useState(null);
+
+  useEffect(() => {
+    // navigation.navigate("LoginScreen"); // Remove this line
+  }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -104,28 +109,30 @@ export default function App() {
   }
 
   return (
-    <SettingsProvider>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen name="Main" options={{ headerShown: false }}>
-            {(props) => (
-              <MainTabs {...props} token={token} onLogout={handleLogout} onTokenUpdate={setToken} />
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="FileDetail">
-            {(props) => <FileDetailScreen {...props} token={token} />}
-          </Stack.Screen>
-          <Stack.Screen name="ChangeCredentials">
-            {(props) => (
-              <ChangeCredentialsScreen
-                {...props}
-                token={token}
-                onTokenUpdate={setToken}
-              />
-            )}
-          </Stack.Screen>
-        </Stack.Navigator>
-      </NavigationContainer>
-    </SettingsProvider>
+    <I18nProvider>
+      <SettingsProvider>
+        <NavigationContainer>
+          <Stack.Navigator>
+            <Stack.Screen name="Main" options={{ headerShown: false }}>
+              {(props) => (
+                <MainTabs {...props} token={token} onLogout={handleLogout} onTokenUpdate={setToken} />
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="FileDetail">
+              {(props) => <FileDetailScreen {...props} token={token} />}
+            </Stack.Screen>
+            <Stack.Screen name="ChangeCredentials">
+              {(props) => (
+                <ChangeCredentialsScreen
+                  {...props}
+                  token={token}
+                  onTokenUpdate={setToken}
+                />
+              )}
+            </Stack.Screen>
+          </Stack.Navigator>
+        </NavigationContainer>
+      </SettingsProvider>
+    </I18nProvider>
   );
 }
