@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { Alert, Button, StyleSheet, Text, View, Platform, TouchableOpacity } from "react-native";
+import { useState, useContext } from "react";
+import { Alert, Button, StyleSheet, Text, View, Platform, TouchableOpacity, TextInput } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { StorageAccessFramework } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { SettingsContext } from "../context/SettingsContext";
+
 const API_BASE = "http://172.16.206.42:4000";
+
 function getMimeType(fileName) {
  const lower = fileName.toLowerCase();
  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
@@ -17,9 +20,14 @@ function getMimeType(fileName) {
  if (lower.endsWith(".json")) return "application/json";
  return "application/octet-stream";
 }
+
 export default function FileDetailScreen({ route, navigation, token }) {
  const { item, refreshParent } = route.params;
  const [busy, setBusy] = useState(false);
+ const [renameValue, setRenameValue] = useState(item.name);
+ const [renaming, setRenaming] = useState(false);
+ const { theme, fontSize } = useContext(SettingsContext);
+
  const downloadToAppStorage = async () => {
    const remoteUrl = `${API_BASE}/files/download?path=${encodeURIComponent(item.path)}`;
    const targetUri = `${FileSystem.cacheDirectory}${item.name}`;
@@ -33,6 +41,7 @@ export default function FileDetailScreen({ route, navigation, token }) {
    }
    return result.uri;
  };
+
  const handleDownload = async () => {
    try {
      setBusy(true);
@@ -79,6 +88,7 @@ export default function FileDetailScreen({ route, navigation, token }) {
      setBusy(false);
    }
  };
+
  const handleShareAndroid = async () => {
    try {
      if (Platform.OS !== "android") return;
@@ -99,6 +109,7 @@ export default function FileDetailScreen({ route, navigation, token }) {
      setBusy(false);
    }
  };
+
  const deleteFile = async () => {
    Alert.alert(
      "Confirmation",
@@ -140,45 +151,97 @@ export default function FileDetailScreen({ route, navigation, token }) {
      ]
    );
  };
+
+ const renameItem = async () => {
+   try {
+     if (!renameValue.trim()) {
+       Alert.alert("Erreur", "Nom requis");
+       return;
+     }
+     setRenaming(true);
+     const res = await fetch(`${API_BASE}/files/rename`, {
+       method: "PATCH",
+       headers: {
+         "Content-Type": "application/json",
+         Authorization: `Bearer ${token}`,
+       },
+       body: JSON.stringify({
+         oldPath: item.path,
+         newName: renameValue.trim(),
+       }),
+     });
+     const data = await res.json();
+     if (!res.ok) {
+       Alert.alert("Erreur", data.error || "Impossible de renommer");
+       return;
+     }
+     Alert.alert("Succès", `Renommé en : ${data.savedAs || renameValue}`);
+     if (refreshParent) {
+       refreshParent();
+     }
+     navigation.goBack();
+   } catch (error) {
+     Alert.alert("Erreur", "Impossible de renommer");
+   } finally {
+     setRenaming(false);
+   }
+ };
+
  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{item.name}</Text>
-      </View>
-      <View style={styles.details}>
-        <Text style={styles.meta}>Type : {item.type}</Text>
-        <Text style={styles.meta}>Chemin : {item.path}</Text>
-        <Text style={styles.meta}>Taille : {item.size} octets</Text>
-      </View>
-      <View style={styles.actions}>
+  <View style={[styles.container, { backgroundColor: theme.backgroundColor }]}>
+    <View style={styles.header}>
+      <Text style={[styles.title, { color: theme.textColor, fontSize }]}>{item.name}</Text>
+    </View>
+    <View style={styles.details}>
+      <Text style={[styles.meta, { color: theme.textColor }]}>Type : {item.type}</Text>
+      <Text style={[styles.meta, { color: theme.textColor }]}>Chemin : {item.path}</Text>
+      <Text style={[styles.meta, { color: theme.textColor }]}>Taille : {item.size} octets</Text>
+    </View>
+    <TextInput
+      style={styles.renameInput}
+      value={renameValue}
+      onChangeText={setRenameValue}
+      placeholder="Nouveau nom"
+    />
+    <TouchableOpacity
+      style={[styles.button, renaming && styles.buttonDisabled]}
+      onPress={renameItem}
+      disabled={renaming}
+    >
+      <Text style={styles.buttonText}>
+        {renaming ? "Renommage..." : "Renommer"}
+      </Text>
+    </TouchableOpacity>
+    <View style={styles.actions}>
+      <TouchableOpacity
+        style={[styles.button, busy && styles.buttonDisabled]}
+        onPress={handleDownload}
+        disabled={busy}
+      >
+        <Text style={styles.buttonText}>
+          {busy ? "Traitement..." : "Télécharger"}
+        </Text>
+      </TouchableOpacity>
+      {Platform.OS === "android" && (
         <TouchableOpacity
           style={[styles.button, busy && styles.buttonDisabled]}
-          onPress={handleDownload}
+          onPress={handleShareAndroid}
           disabled={busy}
         >
-          <Text style={styles.buttonText}>
-            {busy ? "Traitement..." : "Télécharger"}
-          </Text>
+          <Text style={styles.buttonText}>Partager</Text>
         </TouchableOpacity>
-        {Platform.OS === "android" && (
-          <TouchableOpacity
-            style={[styles.button, busy && styles.buttonDisabled]}
-            onPress={handleShareAndroid}
-            disabled={busy}
-          >
-            <Text style={styles.buttonText}>Partager</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={[styles.button, styles.deleteButton]}
-          onPress={deleteFile}
-        >
-          <Text style={styles.buttonText}>Supprimer</Text>
-        </TouchableOpacity>
-      </View>
+      )}
+      <TouchableOpacity
+        style={[styles.button, styles.deleteButton]}
+        onPress={deleteFile}
+      >
+        <Text style={styles.buttonText}>Supprimer</Text>
+      </TouchableOpacity>
     </View>
+  </View>
  );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -233,5 +296,14 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+    marginBottom: 10,
+    backgroundColor: "#fff",
   },
 });

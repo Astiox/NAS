@@ -1,25 +1,40 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
 import {
   View,
   Text,
   TextInput,
-  Button,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import { SettingsContext } from "../context/SettingsContext";
 
 const API_BASE = "http://172.16.206.42:4000";
 
-export default function SettingsScreen({ token, onTokenUpdate, navigation }) {
+export default function SettingsScreen({ navigation }) {
+  const { theme, fontSize, setTheme, setFontSize } = useContext(SettingsContext);
   const [username, setUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [primaryColor, setPrimaryColor] = useState("");
-  const [fontSize, setFontSize] = useState("");
-  const [logoSize, setLogoSize] = useState("");
+
+  const themes = {
+    default: { backgroundColor: "#fff", textColor: "#000" },
+    dark: { backgroundColor: "#000", textColor: "#fff" },
+    blue: { backgroundColor: "#007AFF", textColor: "#fff" },
+    green: { backgroundColor: "#4CAF50", textColor: "#fff" },
+    red: { backgroundColor: "#F44336", textColor: "#fff" },
+    brown: { backgroundColor: "#8B4513", textColor: "#F5F5DC" },
+  };
+
+  const fontSizes = {
+    small: 14,
+    medium: 18,
+    large: 22,
+  };
 
   const handleUpdate = async () => {
     try {
@@ -58,50 +73,59 @@ export default function SettingsScreen({ token, onTokenUpdate, navigation }) {
     }
   };
 
-  const navigateToChangeCredentials = () => {
-    navigation.navigate("ChangeCredentials");
-  };
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Paramètres</Text>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.backgroundColor }]}
+      contentContainerStyle={styles.contentContainer}
+    >
+      <Text style={[styles.title, { color: theme.textColor, fontSize }]}>Paramètres</Text>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Personnalisation</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Couleur principale (ex: #007AFF)"
-          value={primaryColor}
-          onChangeText={setPrimaryColor}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Taille de police (ex: 16)"
-          value={fontSize}
-          onChangeText={setFontSize}
-          keyboardType="numeric"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Taille du logo (ex: 48)"
-          value={logoSize}
-          onChangeText={setLogoSize}
-          keyboardType="numeric"
-        />
+        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Thèmes</Text>
+        {Object.keys(themes).map((key) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.button, { borderColor: themes[key].backgroundColor }]}
+            onPress={() => setTheme(key)}
+          >
+            <Text style={[styles.buttonText, { color: themes[key].backgroundColor }]}>
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Changer Identifiants</Text>
-        <Button title="Modifier Identifiants" onPress={navigateToChangeCredentials} />
+        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Taille de police</Text>
+        {Object.keys(fontSizes).map((key) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.button, { borderColor: "#007AFF" }]}
+            onPress={() => setFontSize(key)}
+          >
+            <Text style={[styles.buttonText, { color: "#007AFF" }]}>{key}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
-    </View>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: theme.textColor }]}>Changer Identifiants</Text>
+        <TouchableOpacity
+          style={[styles.button, { borderColor: theme.textColor }]}
+          onPress={() => navigation.navigate("ChangeCredentials")}
+        >
+          <Text style={[styles.buttonText, { color: theme.textColor }]}>Modifier Identifiants</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#f9f9f9",
+  },
+  contentContainer: {
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "#f9f9f9",
   },
   title: {
     fontSize: 28,
@@ -126,5 +150,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 10,
     color: "#333",
+  },
+  button: {
+    borderWidth: 2,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    alignItems: "center",
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });

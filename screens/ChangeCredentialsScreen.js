@@ -1,10 +1,11 @@
-
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import { SettingsContext } from "../context/SettingsContext";
 
 const API_BASE = "http://172.16.206.42:4000";
 
 export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
+  const { theme, fontSize } = useContext(SettingsContext);
   const [username, setUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -48,23 +49,23 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Changer Identifiants</Text>
+    <View style={[styles.container, { backgroundColor: theme.backgroundColor }]}>
+      <Text style={[styles.title, { color: theme.textColor, fontSize }]}>Changer Identifiants</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: theme.textColor }]}
         placeholder="Nouveau username (optionnel)"
         value={username}
         onChangeText={setUsername}
       />
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: theme.textColor }]}
         placeholder="Mot de passe actuel"
         value={currentPassword}
         onChangeText={setCurrentPassword}
         secureTextEntry
       />
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: theme.textColor }]}
         placeholder="Nouveau mot de passe (optionnel)"
         value={newPassword}
         onChangeText={setNewPassword}

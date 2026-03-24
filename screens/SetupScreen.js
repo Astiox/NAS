@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
 const API_BASE = "http://172.16.206.42:4000";
-export default function SetupScreen({ onDone }) {
+export default function SetupScreen({ onDone, navigation }) {
  const [username, setUsername] = useState("");
  const [password, setPassword] = useState("");
  const [loading, setLoading] = useState(false);
@@ -37,6 +37,7 @@ export default function SetupScreen({ onDone }) {
  };
  return (
 <View style={styles.container}>
+<Button title="⬅ Retour" onPress={() => navigation.goBack()} />
 <Text style={styles.title}>Première configuration</Text>
 <TextInput
        style={styles.input}
