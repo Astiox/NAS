@@ -13,7 +13,7 @@ import FileDetailScreen from "./screens/FileDetailsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import ChangeCredentialsScreen from "./screens/ChangeCredentialsScreen";
 
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 

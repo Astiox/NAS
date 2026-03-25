@@ -1,18 +1,18 @@
-import { useEffect, useState, useContext } from "react";
-import {
- View,
- Text,
- TouchableOpacity,
- StyleSheet,
- ScrollView,
- Alert,
- Button,
- TextInput,
-} from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { useContext, useEffect, useState } from "react";
+import {
+    Alert,
+    Button,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { SettingsContext } from "../context/SettingsContext";
 
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 
 function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9-_]/g, ""); // Removes invalid characters
@@ -138,6 +138,13 @@ export default function FileScreen({ token, onLogout, navigation }) {
      refreshParent: () => loadFiles(currentPath),
    });
  };
+
+ const handleFolderLongPress = (item) => {
+   navigation.navigate("FileDetail", {
+     item,
+     refreshParent: () => loadFiles(currentPath),
+   });
+ };
  const goBack = () => {
    if (!currentPath) return;
    const parts = currentPath.split("/").filter(Boolean);
@@ -199,6 +206,7 @@ export default function FileScreen({ token, onLogout, navigation }) {
              key={item.path}
              style={styles.item}
              onPress={() => openItem(item)}
+             onLongPress={() => item.type === "folder" && handleFolderLongPress(item)}
 >
 <Text style={[styles.itemText, { color: theme.textColor }]}>
                {item.type === "folder" ? "📁" : "📄"} {item.name}

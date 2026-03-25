@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
-const API_BASE = "http://172.16.206.42:4000";
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+const API_BASE = "http://192.168.4.50:4000";
 export default function LoginScreen({ onLogin }) {
  const [username, setUsername] = useState("moussepi");
  const [password, setPassword] = useState("Secret");
@@ -47,6 +47,10 @@ export default function LoginScreen({ onLogin }) {
          value={username}
          onChangeText={setUsername}
          autoCapitalize="none"
+         autoCorrect={false}
+         autoComplete="off"
+         textContentType="none"
+         spellCheck={false}
        />
        <TextInput
          style={styles.input}
@@ -54,6 +58,10 @@ export default function LoginScreen({ onLogin }) {
          value={password}
          onChangeText={setPassword}
          secureTextEntry
+         autoCorrect={false}
+         autoComplete="off"
+         textContentType="none"
+         spellCheck={false}
        />
        <TouchableOpacity
          style={[styles.button, loading && styles.buttonDisabled]}

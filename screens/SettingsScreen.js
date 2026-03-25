@@ -11,7 +11,7 @@ import {
 import { SettingsContext } from "../context/SettingsContext";
 import { t, getLocale, setLocale } from "../i18n";
 
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 
 export default function SettingsScreen({ navigation }) {
   const { theme, fontSize, setTheme, setFontSize } = useContext(SettingsContext);

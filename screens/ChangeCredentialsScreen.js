@@ -1,8 +1,9 @@
-import { useState, useContext } from "react";
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { useContext, useState } from "react";
+import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
 import { SettingsContext } from "../context/SettingsContext";
 
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 
 export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
   const { theme, fontSize } = useContext(SettingsContext);
@@ -12,11 +13,12 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
   const [loading, setLoading] = useState(false);
 
   const handleUpdate = async () => {
+    if (!currentPassword) {
+      Alert.alert("Erreur", "Mot de passe actuel requis");
+      return;
+    }
+    
     try {
-      if (!currentPassword) {
-        Alert.alert("Erreur", "Mot de passe actuel requis");
-        return;
-      }
       setLoading(true);
       const res = await fetch(`${API_BASE}/auth/settings`, {
         method: "PATCH",
@@ -30,11 +32,22 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
           newPassword: newPassword || undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        Alert.alert("Erreur", data.error || "Impossible de modifier");
+
+      // Real network error (fetch fails)
+      if (!res) {
+        Alert.alert("Erreur réseau", "Impossible de joindre l'API");
         return;
       }
+
+      const data = await res.json();
+
+      // Backend error (res.ok === false)
+      if (!res.ok) {
+        Alert.alert("Erreur", data.error || "Impossible de modifier les identifiants");
+        return;
+      }
+
+      // Success response (res.ok === true)
       await SecureStore.setItemAsync("token", data.token);
       onTokenUpdate(data.token);
       Alert.alert("Succès", "Identifiants mis à jour");
@@ -42,6 +55,7 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
       setCurrentPassword("");
       setNewPassword("");
     } catch (error) {
+      // Catch real network errors
       Alert.alert("Erreur réseau", "Impossible de joindre l'API");
     } finally {
       setLoading(false);
@@ -56,6 +70,11 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
         placeholder="Nouveau username (optionnel)"
         value={username}
         onChangeText={setUsername}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        textContentType="none"
+        spellCheck={false}
       />
       <TextInput
         style={[styles.input, { color: theme.textColor }]}
@@ -63,6 +82,10 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
         value={currentPassword}
         onChangeText={setCurrentPassword}
         secureTextEntry
+        autoCorrect={false}
+        autoComplete="off"
+        textContentType="none"
+        spellCheck={false}
       />
       <TextInput
         style={[styles.input, { color: theme.textColor }]}
@@ -70,6 +93,10 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
         value={newPassword}
         onChangeText={setNewPassword}
         secureTextEntry
+        autoCorrect={false}
+        autoComplete="off"
+        textContentType="none"
+        spellCheck={false}
       />
       <Button title={loading ? "Mise à jour..." : "Valider"} onPress={handleUpdate} disabled={loading} />
     </View>

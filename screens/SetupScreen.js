@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
 import { useI18n } from "../context/I18nContext";
-import { t } from "../i18n";
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 export default function SetupScreen({ onDone, navigation }) {
  const { t } = useI18n(); // Use the I18nContext
  const [username, setUsername] = useState("");
@@ -48,7 +47,10 @@ export default function SetupScreen({ onDone, navigation }) {
        value={username}
        onChangeText={setUsername}
        autoCapitalize="none"
-       autoComplete="off" // Disable auto-completion
+       autoCorrect={false}
+       autoComplete="off"
+       textContentType="none"
+       spellCheck={false}
      />
 <TextInput
        style={styles.input}
@@ -56,7 +58,10 @@ export default function SetupScreen({ onDone, navigation }) {
        value={password}
        onChangeText={setPassword}
        secureTextEntry
-       autoComplete="off" // Disable auto-completion
+       autoCorrect={false}
+       autoComplete="off"
+       textContentType="none"
+       spellCheck={false}
      />
 <Button
        title={loading ? t("creating_account") : t("create_account")}

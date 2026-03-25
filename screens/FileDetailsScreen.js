@@ -5,7 +5,7 @@ import { StorageAccessFramework } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { SettingsContext } from "../context/SettingsContext";
 
-const API_BASE = "http://172.16.206.42:4000";
+const API_BASE = "http://192.168.4.50:4000";
 
 function getMimeType(fileName) {
  const lower = fileName.toLowerCase();
