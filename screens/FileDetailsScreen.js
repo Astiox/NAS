@@ -1,11 +1,10 @@
-import { useState, useContext } from "react";
-import { Alert, Button, StyleSheet, Text, View, Platform, TouchableOpacity, TextInput } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { StorageAccessFramework } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { useContext, useState } from "react";
+import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { NAS_API_BASE } from "../config";
 import { SettingsContext } from "../context/SettingsContext";
-
-const API_BASE = "http://192.168.4.50:4000";
 
 function getMimeType(fileName) {
  const lower = fileName.toLowerCase();
@@ -21,25 +20,122 @@ function getMimeType(fileName) {
  return "application/octet-stream";
 }
 
-export default function FileDetailScreen({ route, navigation, token }) {
+function safeParseJson(text) {
+ if (!text) {
+  return null;
+ }
+
+ try {
+  return JSON.parse(text);
+ } catch {
+  return null;
+ }
+}
+
+function sanitizePathSegment(value) {
+ return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
+}
+
+export default function FileDetailScreen({ route, navigation, laravelToken }) {
  const { item, refreshParent } = route.params;
  const [busy, setBusy] = useState(false);
  const [renameValue, setRenameValue] = useState(item.name);
  const [renaming, setRenaming] = useState(false);
  const { theme, fontSize } = useContext(SettingsContext);
+ const isFolder = item.type === "folder";
 
- const downloadToAppStorage = async () => {
-   const remoteUrl = `${API_BASE}/files/download?path=${encodeURIComponent(item.path)}`;
-   const targetUri = `${FileSystem.cacheDirectory}${item.name}`;
-   const result = await FileSystem.downloadAsync(remoteUrl, targetUri, {
+ const parseErrorMessage = (data, fallback) =>
+  data?.error || data?.message || fallback;
+
+ const fetchFolderItems = async (folderPath) => {
+   const authHeader = `Bearer ${laravelToken}`;
+   const url = `${NAS_API_BASE}/files?path=${encodeURIComponent(folderPath)}`;
+
+   console.log("[FileDetailsScreen] Folder listing URL:", url);
+   console.log("[FileDetailsScreen] laravelToken exists:", !!laravelToken);
+   console.log("[FileDetailsScreen] Authorization header:", authHeader);
+
+   const res = await fetch(url, {
      headers: {
-       Authorization: `Bearer ${token}`,
+       Authorization: authHeader,
+       Accept: "application/json",
      },
    });
-   if (result.status !== 200) {
-     throw new Error(`Téléchargement impossible (${result.status})`);
+
+   console.log("[FileDetailsScreen] Folder listing status:", res.status);
+   const text = await res.text();
+   console.log("[FileDetailsScreen] Folder listing body:", text);
+   const data = safeParseJson(text);
+
+   if (!res.ok) {
+     throw new Error(parseErrorMessage(data, text || "Impossible de lire le dossier"));
    }
+
+   return Array.isArray(data?.items) ? data.items : [];
+ };
+
+ const ensureDirectory = async (directoryUri) => {
+   const info = await FileSystem.getInfoAsync(directoryUri);
+   if (!info.exists) {
+     await FileSystem.makeDirectoryAsync(directoryUri, { intermediates: true });
+   }
+ };
+
+ const downloadFileToPath = async (remotePath, targetUri) => {
+   const authHeader = `Bearer ${laravelToken}`;
+   const remoteUrl = `${NAS_API_BASE}/files?path=${encodeURIComponent(remotePath)}&download=1`;
+
+   console.log("[FileDetailsScreen] Download URL:", remoteUrl);
+   console.log("[FileDetailsScreen] laravelToken exists:", !!laravelToken);
+   console.log("[FileDetailsScreen] Authorization header:", authHeader);
+
+   const result = await FileSystem.downloadAsync(remoteUrl, targetUri, {
+    headers: {
+     Authorization: authHeader,
+     Accept: "application/json",
+    },
+   });
+
+   console.log("[FileDetailsScreen] Download status:", result.status);
+
+   if (result.status !== 200) {
+    throw new Error(`Téléchargement impossible (${result.status})`);
+   }
+
    return result.uri;
+ };
+
+ const downloadFolderRecursively = async (folderItem, baseDirectory) => {
+   const rootDirectory = `${baseDirectory}${sanitizePathSegment(folderItem.name)}`;
+   await ensureDirectory(rootDirectory);
+
+   const walk = async (remoteFolderPath, localDirectory) => {
+     const children = await fetchFolderItems(remoteFolderPath);
+
+     for (const child of children) {
+       if (child.type === "folder") {
+         const nextDirectory = `${localDirectory}/${sanitizePathSegment(child.name)}`;
+         await ensureDirectory(nextDirectory);
+         await walk(child.path, nextDirectory);
+         continue;
+       }
+
+       const targetUri = `${localDirectory}/${sanitizePathSegment(child.name)}`;
+       await downloadFileToPath(child.path, targetUri);
+     }
+   };
+
+   await walk(folderItem.path, rootDirectory);
+   return rootDirectory;
+ };
+
+ const downloadToAppStorage = async () => {
+   if (isFolder) {
+     return downloadFolderRecursively(item, FileSystem.cacheDirectory);
+   }
+
+   const targetUri = `${FileSystem.cacheDirectory}${sanitizePathSegment(item.name)}`;
+   return downloadFileToPath(item.path, targetUri);
  };
 
  const handleDownload = async () => {
@@ -53,12 +149,25 @@ export default function FileDetailScreen({ route, navigation, token }) {
          return;
        }
        await Sharing.shareAsync(localUri, {
-         mimeType: getMimeType(item.name),
-         dialogTitle: "Enregistrer dans Fichiers",
+         mimeType: isFolder ? undefined : getMimeType(item.name),
+         dialogTitle: isFolder ? "Exporter le dossier" : "Enregistrer dans Fichiers",
        });
        return;
      }
      if (Platform.OS === "android") {
+       if (isFolder) {
+         const canShare = await Sharing.isAvailableAsync();
+         if (canShare) {
+           await Sharing.shareAsync(localUri, {
+             dialogTitle: "Partager le dossier",
+           });
+           return;
+         }
+
+         Alert.alert("OK", `Dossier téléchargé dans le cache : ${item.name}`);
+         return;
+       }
+
        const permissions =
          await StorageAccessFramework.requestDirectoryPermissionsAsync();
        if (!permissions.granted) {
@@ -100,11 +209,11 @@ export default function FileDetailScreen({ route, navigation, token }) {
        return;
      }
      await Sharing.shareAsync(localUri, {
-       mimeType: getMimeType(item.name),
-       dialogTitle: "Partager le fichier",
+       mimeType: isFolder ? undefined : getMimeType(item.name),
+       dialogTitle: isFolder ? "Partager le dossier" : "Partager le fichier",
      });
    } catch (error) {
-     Alert.alert("Erreur", "Impossible de partager le fichier");
+     Alert.alert("Erreur", isFolder ? "Impossible de partager le dossier" : "Impossible de partager le fichier");
    } finally {
      setBusy(false);
    }
@@ -124,26 +233,39 @@ export default function FileDetailScreen({ route, navigation, token }) {
          style: "destructive",
          onPress: async () => {
            try {
-             const res = await fetch(
-               `${API_BASE}/files?path=${encodeURIComponent(item.path)}`,
-               {
-                 method: "DELETE",
-                 headers: {
-                   Authorization: `Bearer ${token}`,
-                 },
-               }
-             );
-             const data = await res.json();
+             const authHeader = `Bearer ${laravelToken}`;
+             const url = `${NAS_API_BASE}/files?path=${encodeURIComponent(item.path)}`;
+
+             console.log("[FileDetailsScreen] Delete URL:", url);
+             console.log("[FileDetailsScreen] Delete method:", "DELETE");
+             console.log("[FileDetailsScreen] laravelToken exists:", !!laravelToken);
+             console.log("[FileDetailsScreen] Authorization header:", authHeader);
+
+             const res = await fetch(url, {
+              method: "DELETE",
+              headers: {
+               Authorization: authHeader,
+               Accept: "application/json",
+              },
+             });
+
+             console.log("[FileDetailsScreen] Delete response status:", res.status);
+             const text = await res.text();
+             console.log("[FileDetailsScreen] Delete response body:", text);
+             const data = safeParseJson(text);
+
              if (!res.ok) {
-               Alert.alert("Erreur", data.error || "Suppression impossible");
+               Alert.alert("Erreur", parseErrorMessage(data, text || "Suppression impossible"));
                return;
              }
-             Alert.alert("OK", "Fichier supprimé");
+
+             Alert.alert("OK", isFolder ? "Dossier supprimé" : "Fichier supprimé");
              if (refreshParent) {
                refreshParent();
              }
              navigation.goBack();
            } catch (error) {
+             console.log("[FileDetailsScreen] Delete error:", error);
              Alert.alert("Erreur", "Impossible de supprimer le fichier");
            }
          },
@@ -159,28 +281,42 @@ export default function FileDetailScreen({ route, navigation, token }) {
        return;
      }
      setRenaming(true);
-     const res = await fetch(`${API_BASE}/files/rename`, {
+     
+     const url = `${NAS_API_BASE}/files/rename`;
+     const authHeader = `Bearer ${laravelToken}`;
+     console.log("[FileDetailsScreen] Rename URL:", url);
+     console.log("[FileDetailsScreen] laravelToken exists:", !!laravelToken);
+     console.log("[FileDetailsScreen] Authorization header:", authHeader);
+     
+     const res = await fetch(url, {
        method: "PATCH",
        headers: {
          "Content-Type": "application/json",
-         Authorization: `Bearer ${token}`,
+         Authorization: authHeader,
+         Accept: "application/json",
        },
        body: JSON.stringify({
          oldPath: item.path,
          newName: renameValue.trim(),
        }),
      });
-     const data = await res.json();
+     
+     console.log("[FileDetailsScreen] Rename response status:", res.status);
+     const text = await res.text();
+     console.log("[FileDetailsScreen] Rename response body:", text);
+     const data = safeParseJson(text);
+     
      if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Impossible de renommer");
+       Alert.alert("Erreur", data?.error || "Impossible de renommer");
        return;
      }
-     Alert.alert("Succès", `Renommé en : ${data.savedAs || renameValue}`);
+     Alert.alert("Succès", `Renommé en : ${data?.savedAs || renameValue}`);
      if (refreshParent) {
        refreshParent();
      }
      navigation.goBack();
    } catch (error) {
+     console.log("[FileDetailsScreen] Rename error:", error);
      Alert.alert("Erreur", "Impossible de renommer");
    } finally {
      setRenaming(false);
@@ -219,7 +355,7 @@ export default function FileDetailScreen({ route, navigation, token }) {
         disabled={busy}
       >
         <Text style={styles.buttonText}>
-          {busy ? "Traitement..." : "Télécharger"}
+          {busy ? "Traitement..." : isFolder ? "Télécharger le dossier" : "Télécharger"}
         </Text>
       </TouchableOpacity>
       {Platform.OS === "android" && (
@@ -228,7 +364,7 @@ export default function FileDetailScreen({ route, navigation, token }) {
           onPress={handleShareAndroid}
           disabled={busy}
         >
-          <Text style={styles.buttonText}>Partager</Text>
+          <Text style={styles.buttonText}>{isFolder ? "Partager le dossier" : "Partager"}</Text>
         </TouchableOpacity>
       )}
       <TouchableOpacity

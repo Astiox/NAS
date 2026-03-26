@@ -1,39 +1,86 @@
+import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-const API_BASE = "http://192.168.4.50:4000";
+import { LARAVEL_API_BASE } from "../config";
+
+function safeParseJson(text) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginScreen({ onLogin }) {
- const [username, setUsername] = useState("moussepi");
- const [password, setPassword] = useState("Secret");
- const [loading, setLoading] = useState(false);
- const handleLogin = async () => {
-   try {
-     setLoading(true);
-     const res = await fetch(`${API_BASE}/auth/login`, {
-       method: "POST",
-       headers: {
-         "Content-Type": "application/json"
-       },
-       body: JSON.stringify({
-         username,
-         password
-       })
-     });
-     const data = await res.json();
-     if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Login failed");
-       return;
-     }
-     if (data.token) {
-       onLogin(data.token);
-     } else {
-       Alert.alert("Erreur", "Token non reçu");
-     }
-   } catch (error) {
-     Alert.alert("Erreur", "Une erreur s'est produite");
-   } finally {
-     setLoading(false);
-   }
- };
+  const [username, setUsername] = useState("moussepi");
+  const [password, setPassword] = useState("Secret");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (loading) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // 1. Login to Laravel
+      console.log("[LoginScreen] Logging in to Laravel...");
+      const laravelRes = await fetch(`${LARAVEL_API_BASE}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password
+        })
+      });
+
+      console.log("[LoginScreen] Laravel response status:", laravelRes.status);
+      const rawBody = await laravelRes.text();
+      console.log("[LoginScreen] Laravel raw response body:", rawBody);
+      const laravelData = safeParseJson(rawBody);
+      console.log("[LoginScreen] Laravel response:", laravelData);
+
+      if (!laravelRes.ok) {
+        Alert.alert("Erreur", laravelData?.error || laravelData?.message || "Login failed");
+        return;
+      }
+
+      const laravelToken = laravelData?.token;
+      if (!laravelToken) {
+        Alert.alert("Erreur", "Laravel token not received");
+        return;
+      }
+
+      // 2. Store Laravel session securely
+      console.log("[LoginScreen] Storing tokens securely");
+      await SecureStore.setItemAsync("laravelToken", laravelToken);
+      await SecureStore.deleteItemAsync("nasToken");
+
+      if (laravelData?.user) {
+        await SecureStore.setItemAsync("user", JSON.stringify(laravelData.user));
+      }
+      if (laravelData?.settings) {
+        await SecureStore.setItemAsync("settings", JSON.stringify(laravelData.settings));
+      }
+
+      // 3. Notify parent component
+      console.log("[LoginScreen] Login successful, calling onLogin");
+      onLogin(laravelToken, laravelData.user, laravelData.settings);
+    } catch (error) {
+      console.log("[LoginScreen] Error:", error.message);
+      Alert.alert("Erreur réseau", "Impossible de joindre le serveur Laravel");
+    } finally {
+      setLoading(false);
+    }
+  };
 
  return (
    <View style={styles.container}>

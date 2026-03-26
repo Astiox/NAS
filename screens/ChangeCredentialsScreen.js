@@ -1,11 +1,10 @@
 import * as SecureStore from "expo-secure-store";
 import { useContext, useState } from "react";
 import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
+import { LARAVEL_API_BASE } from "../config";
 import { SettingsContext } from "../context/SettingsContext";
 
-const API_BASE = "http://192.168.4.50:4000";
-
-export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
+export default function ChangeCredentialsScreen({ laravelToken, onTokenUpdate }) {
   const { theme, fontSize } = useContext(SettingsContext);
   const [username, setUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -17,46 +16,48 @@ export default function ChangeCredentialsScreen({ token, onTokenUpdate }) {
       Alert.alert("Erreur", "Mot de passe actuel requis");
       return;
     }
-    
+
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/auth/settings`, {
+      
+      console.log("[ChangeCredentialsScreen] Updating account");
+      console.log("[ChangeCredentialsScreen] laravelToken exists:", !!laravelToken);
+      
+      const res = await fetch(`${LARAVEL_API_BASE}/account`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${laravelToken}`,
         },
         body: JSON.stringify({
           username: username || undefined,
-          currentPassword,
-          newPassword: newPassword || undefined,
+          current_password: currentPassword,
+          new_password: newPassword || undefined,
         }),
       });
 
-      // Real network error (fetch fails)
-      if (!res) {
-        Alert.alert("Erreur réseau", "Impossible de joindre l'API");
-        return;
-      }
+      console.log("[ChangeCredentialsScreen] Account update response status:", res.status);
+      const text = await res.text();
+      console.log("[ChangeCredentialsScreen] Account update response body:", text);
+      const data = JSON.parse(text);
 
-      const data = await res.json();
-
-      // Backend error (res.ok === false)
       if (!res.ok) {
-        Alert.alert("Erreur", data.error || "Impossible de modifier les identifiants");
+        Alert.alert("Erreur", data.error || data.message || "Impossible de modifier les identifiants");
         return;
       }
 
-      // Success response (res.ok === true)
-      await SecureStore.setItemAsync("token", data.token);
-      onTokenUpdate(data.token);
+      if (data.token) {
+        await SecureStore.setItemAsync("laravelToken", data.token);
+        onTokenUpdate(data.token);
+      }
+
       Alert.alert("Succès", "Identifiants mis à jour");
       setUsername("");
       setCurrentPassword("");
       setNewPassword("");
     } catch (error) {
-      // Catch real network errors
-      Alert.alert("Erreur réseau", "Impossible de joindre l'API");
+      console.log("[ChangeCredentialsScreen] Error:", error);
+      Alert.alert("Erreur réseau", "Impossible de joindre le serveur Laravel");
     } finally {
       setLoading(false);
     }

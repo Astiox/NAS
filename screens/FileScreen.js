@@ -10,15 +10,26 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { NAS_API_BASE } from "../config";
 import { SettingsContext } from "../context/SettingsContext";
 
-const API_BASE = "http://192.168.4.50:4000";
-
 function sanitizeName(name) {
-  return name.replace(/[^a-zA-Z0-9-_]/g, ""); // Removes invalid characters
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-export default function FileScreen({ token, onLogout, navigation }) {
+function safeParseJson(text) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export default function FileScreen({ laravelToken, onLogout, navigation }) {
  const [items, setItems] = useState([]);
  const [currentPath, setCurrentPath] = useState("");
  const [loading, setLoading] = useState(false);
@@ -31,21 +42,36 @@ export default function FileScreen({ token, onLogout, navigation }) {
    try {
      setLoading(true);
      const url = path
-       ? `${API_BASE}/files?path=${encodeURIComponent(path)}`
-       : `${API_BASE}/files`;
+       ? `${NAS_API_BASE}/files?path=${encodeURIComponent(path)}`
+       : `${NAS_API_BASE}/files`;
+     const authHeader = `Bearer ${laravelToken}`;
+     
+     console.log("[FileScreen] NAS request URL:", url);
+     console.log("[FileScreen] laravelToken exists:", !!laravelToken);
+     console.log("[FileScreen] Authorization header:", authHeader);
+     
      const res = await fetch(url, {
        headers: {
-         Authorization: `Bearer ${token}`,
+         Authorization: authHeader,
+         Accept: "application/json",
        },
      });
-     const data = await res.json();
+     
+     console.log("[FileScreen] NAS response status:", res.status);
+     const text = await res.text();
+     console.log("[FileScreen] NAS response body:", text);
+     const data = safeParseJson(text);
+     
      if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Impossible de charger les fichiers");
+       Alert.alert("Erreur", data?.error || "Impossible de charger les fichiers");
        return;
      }
-     setItems(data.items || []);
-     setCurrentPath(data.currentPath || "");
+     const nextItems = Array.isArray(data?.items) ? data.items : [];
+     console.log("[FileScreen] Setting items count:", nextItems.length);
+     setItems(nextItems);
+     setCurrentPath(data?.currentPath || "");
    } catch (error) {
+     console.log("[FileScreen] Error:", error.message);
      Alert.alert("Erreur réseau", "Impossible de joindre l'API");
    } finally {
      setLoading(false);
@@ -65,32 +91,47 @@ export default function FileScreen({ token, onLogout, navigation }) {
        return;
      }
      const file = result.assets[0];
+     const sanitizedFileName = sanitizeName(file.name) || "upload";
      const formData = new FormData();
      formData.append("path", currentPath);
      formData.append("file", {
        uri: file.uri,
-       name: encodeURIComponent(file.name), // Encode special characters
+       name: sanitizedFileName,
        type: file.mimeType || "application/octet-stream",
      });
-     const res = await fetch(`${API_BASE}/files/upload`, {
+     const authHeader = `Bearer ${laravelToken}`;
+     const url = `${NAS_API_BASE}/files`;
+
+     console.log("[FileScreen] Upload URL:", url);
+     console.log("[FileScreen] laravelToken exists:", !!laravelToken);
+     console.log("[FileScreen] Authorization header:", authHeader);
+
+     const res = await fetch(url, {
        method: "POST",
        headers: {
-         Authorization: `Bearer ${token}`,
+         Authorization: authHeader,
+         Accept: "application/json",
        },
        body: formData,
      });
-     const data = await res.json();
+
+     console.log("[FileScreen] Upload response status:", res.status);
+     const text = await res.text();
+     console.log("[FileScreen] Upload response body:", text);
+     const data = safeParseJson(text);
+
      if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Upload impossible");
+       Alert.alert("Erreur", data?.error || data?.message || text || "Upload impossible");
        return;
      }
+
      Alert.alert(
        "Succès",
-       `Fichier uploadé : ${data.savedAs || file.name}`
+       `Fichier uploadé : ${data?.savedAs || file.name}`
      );
      loadFiles(currentPath);
    } catch (error) {
-     console.log(error);
+     console.log("[FileScreen] Upload error:", error);
      Alert.alert("Erreur", "Impossible d'uploader le fichier");
    } finally {
      setUploading(false);
@@ -103,26 +144,39 @@ export default function FileScreen({ token, onLogout, navigation }) {
        return;
      }
      setCreatingFolder(true);
-     const res = await fetch(`${API_BASE}/files/folder`, {
+     const authHeader = `Bearer ${laravelToken}`;
+     
+     console.log("[FileScreen] Create folder URL:", `${NAS_API_BASE}/files/folder`);
+     console.log("[FileScreen] laravelToken exists:", !!laravelToken);
+     console.log("[FileScreen] Authorization header:", authHeader);
+     
+     const res = await fetch(`${NAS_API_BASE}/files/folder`, {
        method: "POST",
-       headers: {
+        headers: {
          "Content-Type": "application/json",
-         Authorization: `Bearer ${token}`,
+         Authorization: authHeader,
+         Accept: "application/json",
        },
        body: JSON.stringify({
          path: currentPath,
          name: newFolderName.trim(),
        }),
      });
-     const data = await res.json();
+     
+     console.log("[FileScreen] Create folder response status:", res.status);
+     const text = await res.text();
+     console.log("[FileScreen] Create folder response body:", text);
+     const data = safeParseJson(text);
+     
      if (!res.ok) {
-       Alert.alert("Erreur", data.error || "Impossible de créer le dossier");
+       Alert.alert("Erreur", data?.error || "Impossible de créer le dossier");
        return;
      }
-     Alert.alert("Succès", `Dossier créé : ${data.savedAs || newFolderName}`);
+     Alert.alert("Succès", `Dossier créé : ${data?.savedAs || newFolderName}`);
      setNewFolderName("");
      loadFiles(currentPath);
    } catch (error) {
+     console.log("[FileScreen] Create folder error:", error);
      Alert.alert("Erreur", "Impossible de créer le dossier");
    } finally {
      setCreatingFolder(false);

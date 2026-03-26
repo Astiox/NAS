@@ -1,25 +1,23 @@
-import { useState, useContext } from "react";
+import * as SecureStore from "expo-secure-store";
+import { useContext, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  Alert,
-  TouchableOpacity,
-  ScrollView,
-  Button,
+    Alert,
+    Button,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import { LARAVEL_API_BASE } from "../config";
 import { SettingsContext } from "../context/SettingsContext";
-import { t, getLocale, setLocale } from "../i18n";
+import { getLocale, setLocale, t } from "../i18n";
 
-const API_BASE = "http://192.168.4.50:4000";
-
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen({ navigation, laravelToken }) {
   const { theme, fontSize, setTheme, setFontSize } = useContext(SettingsContext);
-  const [username, setUsername] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [language, setLanguage] = useState(getLocale()); // Use getLocale() for initial language
+  const [language, setLanguage] = useState(getLocale());
+  const [syncedSettings, setSyncedSettings] = useState(null);
 
   const themes = {
     default: { backgroundColor: "#fff", textColor: "#000" },
@@ -36,47 +34,124 @@ export default function SettingsScreen({ navigation }) {
     large: 22,
   };
 
-  const changeLanguage = (lang) => {
-    setLocale(lang); // Update the locale globally
-    setLanguage(getLocale()); // Update state with the new locale
-    Alert.alert(t("success"), t("language_changed")); // Notify user of language change
-  };
+  useEffect(() => {
+    if (laravelToken) {
+      fetchSettingsFromLaravel();
+    }
+  }, [laravelToken]);
 
-  const handleUpdate = async () => {
+  const fetchSettingsFromLaravel = async () => {
     try {
-      if (!currentPassword) {
-        Alert.alert("Erreur", "Mot de passe actuel requis");
+      console.log("[SettingsScreen] Fetching settings from Laravel");
+      console.log("[SettingsScreen] laravelToken exists:", !!laravelToken);
+      
+      const res = await fetch(`${LARAVEL_API_BASE}/settings`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${laravelToken}`,
+        },
+      });
+
+      console.log("[SettingsScreen] Settings response status:", res.status);
+      const text = await res.text();
+      console.log("[SettingsScreen] Settings response body:", text);
+      
+      if (!res.ok) {
+        console.log("Failed to fetch settings from Laravel");
         return;
       }
-      setLoading(true);
-      const res = await fetch(`${API_BASE}/auth/settings`, {
+
+      const data = JSON.parse(text);
+      if (data.settings) {
+        setSyncedSettings(data.settings);
+        await SecureStore.setItemAsync("settings", JSON.stringify(data.settings));
+        
+        // Apply theme and font size to local context
+        console.log("[SettingsScreen] Applying settings to context");
+        
+        // Use backend theme directly (light, dark, blue, green, red, brown)
+        const backendTheme = data.settings.theme;
+        console.log("[SettingsScreen] Applying theme:", backendTheme);
+        setTheme(backendTheme);
+
+        // Map backend font_size to frontend font key
+        const fontSize = data.settings.font_size;
+        let fontKey = "medium";
+        if (fontSize === 14) fontKey = "small";
+        else if (fontSize === 18) fontKey = "medium";
+        else if (fontSize === 22) fontKey = "large";
+        console.log("[SettingsScreen] Mapping font_size:", fontSize, "->", fontKey);
+        setFontSize(fontKey);
+
+        // Update language
+        if (data.settings.language) {
+          setLocale(data.settings.language);
+          setLanguage(getLocale());
+          console.log("[SettingsScreen] Applied language:", data.settings.language);
+        }
+      }
+    } catch (error) {
+      console.log("Error fetching Laravel settings:", error.message);
+    }
+  };
+
+  const syncSettingsToLaravel = async (updatedSettings) => {
+    try {
+      console.log("[SettingsScreen] Syncing settings to Laravel");
+      console.log("[SettingsScreen] laravelToken exists:", !!laravelToken);
+      console.log("[SettingsScreen] Payload before sync:", updatedSettings);
+      
+      const res = await fetch(`${LARAVEL_API_BASE}/settings`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${laravelToken}`,
         },
-        body: JSON.stringify({
-          username: username || undefined,
-          currentPassword,
-          newPassword: newPassword || undefined,
-        }),
+        body: JSON.stringify(updatedSettings),
       });
-      const data = await res.json();
+
+      console.log("[SettingsScreen] Sync response status:", res.status);
+      const text = await res.text();
+      console.log("[SettingsScreen] Sync response body:", text);
+
       if (!res.ok) {
-        Alert.alert("Erreur", data.error || "Impossible de modifier");
-        return;
+        console.log("Failed to sync settings to Laravel");
+        return false;
       }
-      await SecureStore.setItemAsync("token", data.token);
-      onTokenUpdate(data.token);
-      Alert.alert("Succès", "Paramètres mis à jour");
-      setUsername("");
-      setCurrentPassword("");
-      setNewPassword("");
+
+      const data = JSON.parse(text);
+      if (data.settings) {
+        setSyncedSettings(data.settings);
+        await SecureStore.setItemAsync("settings", JSON.stringify(data.settings));
+      }
+      return true;
     } catch (error) {
-      Alert.alert("Erreur réseau", "Impossible de joindre l'API");
-    } finally {
-      setLoading(false);
+      console.log("Error syncing Laravel settings:", error.message);
+      return false;
     }
+  };
+
+  const changeLanguage = (lang) => {
+    setLocale(lang);
+    setLanguage(getLocale());
+    Alert.alert(t("success"), t("language_changed"));
+    // Sync language preference to Laravel
+    syncSettingsToLaravel({ language: lang });
+  };
+
+  const handleThemeChange = (themeKey) => {
+    setTheme(themeKey);
+    console.log("[SettingsScreen] Theme change:", themeKey);
+    syncSettingsToLaravel({ theme: themeKey });
+  };
+
+  const handleFontSizeChange = (fontKey) => {
+    setFontSize(fontKey);
+    // Map frontend font key to backend integer value
+    const fontSize = fontSizes[fontKey] || 18;
+    console.log("[SettingsScreen] Font size change:", fontKey, "->", fontSize);
+    syncSettingsToLaravel({ font_size: fontSize });
   };
 
   return (
@@ -97,7 +172,7 @@ export default function SettingsScreen({ navigation }) {
           <TouchableOpacity
             key={key}
             style={[styles.button, { borderColor: themes[key].backgroundColor }]}
-            onPress={() => setTheme(key)}
+            onPress={() => handleThemeChange(key)}
           >
             <Text style={[styles.buttonText, { color: themes[key].backgroundColor }]}>
               {key.charAt(0).toUpperCase() + key.slice(1)}
@@ -111,7 +186,7 @@ export default function SettingsScreen({ navigation }) {
           <TouchableOpacity
             key={key}
             style={[styles.button, { borderColor: "#007AFF" }]}
-            onPress={() => setFontSize(key)}
+            onPress={() => handleFontSizeChange(key)}
           >
             <Text style={[styles.buttonText, { color: "#007AFF" }]}>{key}</Text>
           </TouchableOpacity>
